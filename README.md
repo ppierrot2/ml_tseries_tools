@@ -33,5 +33,5 @@ The package is composed of several modules including:
  methods 
 
 
-    
-
+## References     
+Marcos Lopez de Prado, Advances in Financial Machine Learning
