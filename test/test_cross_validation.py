@@ -125,7 +125,6 @@ def test_cross_validation_combinatorial():
                                    sample_weight=sample_weight,
                                    print_info=False,
                                    _importances=False,
-                                   verbose=False,
                                    n_jobs=-1)
 
     assert type(score_combi) == np.ndarray

@@ -73,17 +73,6 @@ def test_metaranking_classifier():
                        RandomForestClassifier()]
     final_estimator = RandomForestClassifier()
 
-    param_grid = {
-        'max_depth': hp.choice('max_depth', [int(x) for x in np.linspace(1, 20, 20)]),
-        'min_samples_split': hp.uniform('min_samples_split', 0.01, .99),
-        'min_samples_leaf': hp.choice('min_samples_leaf', [int(x) for x in np.linspace(1, 20, 20)]),
-        'class_weight': hp.choice('class_weight', ['balanced', 'balanced_subsample', None])
-    }
-    cv_gen = KFold()
-    base_estimators = BayesianSearchCV(final_estimator, param_grid,
-                                       scoring=f1_score, cv=cv_gen,
-                                       optimizer=tpe.suggest, n_iter=10)
-
     meta_classifier = MetaRankingClassifierTS(estimators=base_estimators,
                                               final_estimator=final_estimator,
                                               cv_gen=PurgedKFold(),
@@ -121,6 +110,17 @@ def test_meta_regressor():
     final_estimator = Lasso()
 
     cv_gen = KFold()
+
+    meta_regressor = MetaRegressorTS(estimators=base_estimators,
+                                     final_estimator=final_estimator,
+                                     cv_gen=PurgedKFold(),
+                                     refit=True, n_jobs=1)
+    meta_regressor.fit(X, y, sample_weight=sample_weight)
+    preds = meta_regressor.predict(X)
+
+    assert type(preds) == np.ndarray
+    assert preds.shape == (X.shape[0],)
+
     final_estimator = BayesianSearchCV(final_estimator, param_grid,
                                        scoring=mean_squared_error, cv=cv_gen,
                                        optimizer=tpe.suggest, n_iter=10)
