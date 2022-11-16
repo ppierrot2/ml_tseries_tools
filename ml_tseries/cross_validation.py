@@ -541,29 +541,28 @@ def tseries_cv(model, X: pd.DataFrame,
     return scores
 
 
-def get_predictions(predictions, N, k):
+def get_path_data(data, n, k):
     '''
-    Retrieve the backtest paths
+    Retrieve the data pathwise
 
     Parameters
     ----------
-    predictions: np.array
+    data: np.array
         matrix of C(N,k) lines x k columns, each element is the predicted
-        values of test folds
+        values of every group of test folds
 
     Returns
     -------
     backtests_paths: np.array
-        list of lists C(N,k)*k/N lines x N columns, each list containing a path
+        list of lists C(N,k)*k/N lines x N columns, each list contains a
+        backtest path
     '''
 
-    binom = int(scipy.special.binom(N, k))
-    phi = int(binom * k / N)
-    comb = itertools.combinations(list(range(N)), k)
+    binom = int(scipy.special.binom(n, k))
+    phi = int(binom * k / n)
+    comb = itertools.combinations(list(range(n)), k)
     comb = itertools.chain(*comb)
-    # predicted value for every backtest path
-    paths = np.zeros((phi, N))
-    # we can't affect predictions to numpy array
+    paths = np.zeros((phi, n))
     backtests_paths = np.copy(paths).tolist()
 
     for i in range(binom):
@@ -571,26 +570,24 @@ def get_predictions(predictions, N, k):
             sample = next(comb)
             mask = np.where(paths[:, sample] == 0)[0][0]
             paths[mask][sample] = 1
-            backtests_paths[mask][sample] = predictions[i][j]
+            backtests_paths[mask][sample] = data[i][j]
 
     return backtests_paths
 
 
-def fit_combinatorial_trees(model,
-                            X: pd.DataFrame,
-                            y: pd.DataFrame,
-                            metric: Callable[[np.ndarray, np.ndarray], float],
-                            cv_gen: PurgedCombinatorial = PurgedCombinatorial(),
-                            sample_weight: np.ndarray = None,
-                            y_transform: Callable = None,
-                            fit_params: dict = None,
-                            _importances: bool = True,
-                            print_info: bool = True,
-                            n_jobs: int = 1) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+def fit_combinatorial(model,
+                      X: pd.DataFrame,
+                      y: pd.DataFrame,
+                      metric: Callable[[np.ndarray, np.ndarray], float],
+                      cv_gen: PurgedCombinatorial = PurgedCombinatorial(),
+                      sample_weight: np.ndarray = None,
+                      y_transform: Callable = None,
+                      fit_params: dict = None,
+                      get_importances: bool = True,
+                      verbose: bool = True,
+                      n_jobs: int = 1) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     """
     Fit the combinatorial cross-validation.
-    Compute the scores depending on the metric used, the feature importances
-    and the predictions for further backtesting
     Parameters
     ----------
     model:
@@ -623,11 +620,11 @@ def fit_combinatorial_trees(model,
     fit_params: dict
         dictionary of parameters passed to model.fit
 
-    _importances:
+    get_importances:
         whether to store feature_importances_
         during cross_validation or not
 
-    print_info: bool
+    verbose: bool
         whether to print information during training
         or not (it prints the approximate values)
 
@@ -644,7 +641,7 @@ def fit_combinatorial_trees(model,
     if not isinstance(cv_gen, PurgedCombinatorial):
         raise ValueError('only PurgedCombinatorial object can be passed as cv_gen')
 
-    if print_info == True:
+    if verbose == True:
         len_train = int(len(X) * (1 - cv_gen.n_test_splits / cv_gen.n_splits))
         len_val = int(len(X) / cv_gen.n_splits)
         n_paths = int(scipy.special.binom(cv_gen.n_splits, cv_gen.n_test_splits) * cv_gen.n_test_splits / cv_gen.n_splits)
@@ -668,11 +665,11 @@ def fit_combinatorial_trees(model,
 
         Returns
         -------
-        s: list
-            contains the k computed scores on the k different test sets
-        p: list
+        scores: list
+                contains the k computed scores on the k different test sets
+        preds: list
             contains the k computed predictions on the k different test sets
-        i:
+        imp:
             feature_importances_ for this model
         '''
 
@@ -681,7 +678,7 @@ def fit_combinatorial_trees(model,
         fit_model(model, X.loc[train], y.loc[train], fit_params=fit_params,
                   y_transform=y_transform, sample_weight=sample_weight_train)
 
-        s, p = list(), list()
+        scores, preds = list(), list()
         for i in range(cv_gen.n_test_splits):
             sample_weight_score = build_sample_weight(sample_weight.loc[test[i]])
             if metric.__name__ == 'log_loss':
@@ -691,14 +688,14 @@ def fit_combinatorial_trees(model,
             score = _apply_metric(metric, y.loc[test[i]].values, y_pred,
                                   sample_weight=sample_weight_score)
 
-            s.append(score)
-            p.append(y_pred)
+            scores.append(score)
+            preds.append(y_pred)
 
-        if _importances:
-            i = model.feature_importances_
+        if get_importances:
+            imp = model.feature_importances_
         else:
-            i = None
-        return s, p, i
+            imp = None
+        return scores, preds, imp
 
     fit_params = fit_params or {}
     if sample_weight is None:
@@ -714,11 +711,11 @@ def fit_combinatorial_trees(model,
 
     result = np.array(result)
     scores = result[:, 0]
-    scores = get_predictions(scores, cv_gen.n_splits, cv_gen.n_test_splits)  # reorganize by paths
+    scores = get_path_data(scores, cv_gen.n_splits, cv_gen.n_test_splits) 
     predictions = result[:, 1]
-    paths = get_predictions(predictions, cv_gen.n_splits, cv_gen.n_test_splits)
+    paths = get_path_data(predictions, cv_gen.n_splits, cv_gen.n_test_splits)
 
-    if _importances == True:
+    if get_importances == True:
         imp = np.mean(result[:, 2], axis=0)
     else:
         imp = None
@@ -732,8 +729,8 @@ def combinatorial_cv(model, X: pd.DataFrame, y: pd.DataFrame,
                      y_transform: Callable = None,
                      sample_weight: np.ndarray = None,
                      fit_params: dict = None,
-                     print_info: bool = False,
-                     _importances: bool = False,
+                     verbose: bool = False,
+                     get_importances: bool = False,
                      n_jobs: int = 1) -> np.ndarray:
 
     '''
@@ -777,13 +774,12 @@ def combinatorial_cv(model, X: pd.DataFrame, y: pd.DataFrame,
     fit_params: dict
         dictionary of parameters passed to model.fit
 
-    _importances:
+    get_importances:
         whether to store feature_importances_
         during cross_validation or not
 
-    print_info: bool
-        whether to print information during training
-        or not (it prints the approximate values)
+    verbose: bool
+        if True, print information during training
 
     n_jobs: int
         number of jobs for parallelisation
@@ -798,18 +794,18 @@ def combinatorial_cv(model, X: pd.DataFrame, y: pd.DataFrame,
     assert isinstance(y, pd.Series) or isinstance(y, pd.DataFrame), \
         'need to provide time indexed pandas Serie as y'
 
-    scores, paths, _ = fit_combinatorial_trees(model,
-                                               X=X,
-                                               y=y,
-                                               metric=metric,
-                                               cv_gen=cv_gen,
-                                               y_transform=y_transform,
-                                               sample_weight=sample_weight,
-                                               fit_params=fit_params,
-                                               _importances=_importances,
-                                               print_info=print_info,
-                                               n_jobs=n_jobs,
-                                               )
+    scores, paths, _ = fit_combinatorial(model,
+                                         X=X,
+                                         y=y,
+                                         metric=metric,
+                                         cv_gen=cv_gen,
+                                         y_transform=y_transform,
+                                         sample_weight=sample_weight,
+                                         fit_params=fit_params,
+                                         get_importances=get_importances,
+                                         verbose=verbose,
+                                         n_jobs=n_jobs,
+                                         )
     score = np.array(scores)
     return np.average(score, axis=0)
 
