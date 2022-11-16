@@ -543,19 +543,18 @@ def tseries_cv(model, X: pd.DataFrame,
 
 def get_predictions(predictions, N, k):
     '''
-    Retrieve the predictions paths
+    Retrieve the backtest paths
 
     Parameters
     ----------
     predictions: np.array
-        matrix of C(N,k) lines and k columns, each element is the predicted
-        values of every group in the test set
+        matrix of C(N,k) lines x k columns, each element is the predicted
+        values of test folds
 
     Returns
     -------
-    backtests_list: np.array
-        list of lists (C(N,k)*k/N lines) and N columns, each list contains a
-        backtest path
+    backtests_paths: np.array
+        list of lists C(N,k)*k/N lines x N columns, each list containing a path
     '''
 
     binom = int(scipy.special.binom(N, k))
@@ -565,18 +564,16 @@ def get_predictions(predictions, N, k):
     # predicted value for every backtest path
     paths = np.zeros((phi, N))
     # we can't affect predictions to numpy array
-    backtests_list = np.copy(paths).tolist()
+    backtests_paths = np.copy(paths).tolist()
 
     for i in range(binom):
         for j in range(k):
             sample = next(comb)
-            # first 0 on the sampleth columns
             mask = np.where(paths[:, sample] == 0)[0][0]
-            # to keep track of affectations
             paths[mask][sample] = 1
-            backtests_list[mask][sample] = predictions[i][j]
+            backtests_paths[mask][sample] = predictions[i][j]
 
-    return backtests_list
+    return backtests_paths
 
 
 def fit_combinatorial_trees(model,
