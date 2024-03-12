@@ -1,6 +1,6 @@
-# ml_utils_ts
+# ml_tseries
 
-**ml_utils_ts** is a Machine learning utils package adapted
+**ml_tseries** is a Machine learning utils package adapted
  for time-series. It also provides efficient way to compute feature importance
 
 ## Installing 
